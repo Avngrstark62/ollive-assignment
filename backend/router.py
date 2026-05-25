@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from db import get_db
+from llm_service import generate_assistant_reply
 from models import Conversation, Message
 from schemas import ConversationCreate, ConversationOut, MessageCreate, MessageOut, MessagePairOut
-from service import generate_assistant_reply
 
 router = APIRouter()
 
@@ -77,14 +77,17 @@ def send_message(
     context_messages = list(reversed(db.scalars(context_stmt).all()))
 
     try:
-        assistant_reply = generate_assistant_reply(context_messages)
+        inference_result = generate_assistant_reply(
+            context_messages,
+            conversation_id=conversation_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     assistant_message = Message(
         conversation_id=conversation_id,
         role="assistant",
-        content=assistant_reply,
+        content=inference_result.output_text,
     )
     conversation.updated_at = datetime.now(timezone.utc)
     db.add(assistant_message)
