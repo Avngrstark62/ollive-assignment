@@ -1,6 +1,9 @@
+from uuid import UUID
+
 from openai import OpenAI
 
 from config import settings
+from inference_wrapper import InferenceCallError, InferenceResult, run_inference_with_logging
 from models import Message
 
 SYSTEM_PROMPT = "You are a concise and helpful assistant."
@@ -15,7 +18,9 @@ def get_openai_client() -> OpenAI:
     return _client
 
 
-def generate_assistant_reply(messages: list[Message]) -> str:
+def generate_assistant_reply(
+    messages: list[Message], *, conversation_id: UUID | None = None
+) -> InferenceResult:
     if not settings.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY is not configured.")
 
@@ -26,12 +31,15 @@ def generate_assistant_reply(messages: list[Message]) -> str:
         if message.role in {"user", "assistant"}
     )
 
-    response = get_openai_client().chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=chat_messages,
-    )
-
-    reply = response.choices[0].message.content if response.choices else None
-    if not reply:
-        raise ValueError("OpenAI returned an empty response.")
-    return reply.strip()
+    try:
+        return run_inference_with_logging(
+            provider="openai",
+            model=settings.OPENAI_MODEL,
+            conversation_id=conversation_id,
+            invoke_provider=lambda: get_openai_client().chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=chat_messages,
+            ),
+        )
+    except InferenceCallError as exc:
+        raise ValueError(str(exc)) from exc
