@@ -1,0 +1,68 @@
+# Coding Standards
+
+These standards are mandatory for anyone working on this repository.
+
+## 1) Scope and Simplicity
+- Keep this project as a simple demo chatbot application.
+- Prefer clean, small, readable code over advanced patterns.
+- Do not add unnecessary abstractions, frameworks, or complexity.
+- No authentication unless explicitly requested.
+
+## 2) Required Project Structure
+- Keep frontend and backend in separate top-level directories:
+  - `backend/`
+  - `frontend/`
+
+## 3) Backend Standards
+- Stack:
+  - Python
+  - `uv` for project/dependency management
+  - FastAPI
+  - PostgreSQL
+  - Alembic for migrations
+  - OpenAI for LLM responses
+- Required backend file layout:
+  - `backend/main.py` (entry point)
+  - `backend/app.py` (FastAPI app)
+  - `backend/router.py` (single router file for endpoints)
+  - `backend/config.py` (configuration via Pydantic settings)
+- Keep backend modules minimal and purposeful.
+
+## 4) Database Standards
+- Persist all chat data in PostgreSQL.
+- Conversations and messages must be stored in database tables.
+- Support multi-turn conversation flows with stored history.
+- Maintain a short context window when building LLM input.
+
+## 5) API Feature Requirements
+- Must support:
+  - Create conversation
+  - List conversations
+  - Send messages
+  - Multi-turn message flow
+- Keep API design straightforward and demo-friendly.
+
+## 6) Frontend Standards
+- Stack:
+  - React
+  - Vite
+  - Tailwind CSS
+- Provide a minimal UI for:
+  - Viewing conversations
+  - Creating a conversation
+  - Sending and viewing messages
+
+## 7) Documentation and Tests Policy
+- Do not add extra documentation files unless explicitly requested.
+- Do not add test cases unless explicitly requested.
+- Focus on working code first.
+
+## 8) Configuration Rules
+- Use `backend/config.py` for config management with Pydantic.
+- Keep only intentionally approved defaults.
+- Environment-driven values should be validated on startup.
+
+## 9) Change Discipline
+- Follow existing naming and structure conventions.
+- Keep diffs focused and small.
+- Do not introduce unrelated refactors while implementing features.
