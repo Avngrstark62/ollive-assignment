@@ -2,11 +2,15 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConversationCreate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ConversationUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
 
 
 class ConversationOut(BaseModel):

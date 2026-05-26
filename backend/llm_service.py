@@ -88,15 +88,12 @@ async def generate_assistant_reply(
             max_tokens=settings.ANTHROPIC_MAX_TOKENS,
         )
 
-    try:
-        return await run_inference_with_logging(
-            provider=resolved_provider,
-            model=resolved_model,
-            conversation_id=conversation_id,
-            invoke_provider=invoke_provider,
-        )
-    except InferenceCallError as exc:
-        raise ValueError(str(exc)) from exc
+    return await run_inference_with_logging(
+        provider=resolved_provider,
+        model=resolved_model,
+        conversation_id=conversation_id,
+        invoke_provider=invoke_provider,
+    )
 
 
 def stream_assistant_reply(
