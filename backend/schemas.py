@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +20,8 @@ class ConversationOut(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str
+    provider: Literal["openai", "anthropic"] = "openai"
+    model: str | None = None
 
 
 class MessageOut(BaseModel):

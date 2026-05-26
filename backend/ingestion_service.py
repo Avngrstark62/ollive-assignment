@@ -61,7 +61,7 @@ def _validate_and_structure_log(raw_log: dict[str, Any]) -> dict[str, Any]:
 
     provider = str(raw_log["provider"]).strip().lower()
     status = str(raw_log["status"]).strip().lower()
-    if status not in {"success", "error"}:
+    if status not in {"success", "error", "cancelled"}:
         status = "error"
 
     response = raw_log.get("response")
@@ -99,23 +99,21 @@ def _extract_usage(provider: str, response: Any | None) -> tuple[int | None, int
     if response is None:
         return None, None, None
 
+    usage = _read_usage(response)
+    if usage is None:
+        return None, None, None
+
     if provider == "openai":
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return None, None, None
-        input_tokens = getattr(usage, "prompt_tokens", None)
-        output_tokens = getattr(usage, "completion_tokens", None)
-        total_tokens = getattr(usage, "total_tokens", None)
+        input_tokens = _read_value(usage, "prompt_tokens")
+        output_tokens = _read_value(usage, "completion_tokens")
+        total_tokens = _read_value(usage, "total_tokens")
         if total_tokens is None and input_tokens is not None and output_tokens is not None:
             total_tokens = input_tokens + output_tokens
         return input_tokens, output_tokens, total_tokens
 
     if provider == "anthropic":
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return None, None, None
-        input_tokens = getattr(usage, "input_tokens", None)
-        output_tokens = getattr(usage, "output_tokens", None)
+        input_tokens = _read_value(usage, "input_tokens")
+        output_tokens = _read_value(usage, "output_tokens")
         total_tokens = None
         if input_tokens is not None and output_tokens is not None:
             total_tokens = input_tokens + output_tokens
@@ -124,7 +122,7 @@ def _extract_usage(provider: str, response: Any | None) -> tuple[int | None, int
     return None, None, None
 
 
-def _normalize_error_type(error: Exception | None) -> str | None:
+def _normalize_error_type(error: Any | None) -> str | None:
     if error is None:
         return None
 
@@ -133,6 +131,8 @@ def _normalize_error_type(error: Exception | None) -> str | None:
         return "rate_limit"
     if "timeout" in message:
         return "timeout"
+    if "cancelled" in message or "disconnect" in message:
+        return "cancelled"
     if "authentication" in message or "api key" in message or "401" in message:
         return "auth"
     if "invalid" in message or "400" in message:
@@ -140,11 +140,11 @@ def _normalize_error_type(error: Exception | None) -> str | None:
     return "unknown"
 
 
-def _build_metadata(provider: str, response: Any | None, error: Exception | None) -> dict[str, Any]:
+def _build_metadata(provider: str, response: Any | None, error: Any | None) -> dict[str, Any]:
     metadata: dict[str, Any] = {"provider": provider}
 
     if response is not None:
-        provider_request_id = getattr(response, "id", None)
+        provider_request_id = _read_value(response, "id")
         if provider_request_id:
             metadata["provider_request_id"] = provider_request_id
 
@@ -152,3 +152,15 @@ def _build_metadata(provider: str, response: Any | None, error: Exception | None
         metadata["error_message"] = str(error)
 
     return metadata
+
+
+def _read_value(data: Any, key: str) -> Any:
+    if isinstance(data, dict):
+        return data.get(key)
+    return getattr(data, key, None)
+
+
+def _read_usage(response: Any) -> Any | None:
+    if isinstance(response, dict):
+        return response.get("usage")
+    return getattr(response, "usage", None)

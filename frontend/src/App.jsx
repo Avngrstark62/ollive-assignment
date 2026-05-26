@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createConversation, listConversations, listMessages, sendMessage } from './api'
+import { createConversation, listConversations, listMessages, sendMessageStream } from './api'
 
 function App() {
   const [conversations, setConversations] = useState([])
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState('openai')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -54,15 +55,73 @@ function App() {
       return
     }
 
+    const content = newMessage.trim()
+    const tempUserId = `temp-user-${Date.now()}`
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+    const optimisticUserMessage = {
+      id: tempUserId,
+      conversation_id: selectedConversationId,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+    }
+    const optimisticAssistantMessage = {
+      id: tempAssistantId,
+      conversation_id: selectedConversationId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    }
+
     setLoading(true)
     setError('')
+    setNewMessage('')
+    setMessages((previous) => [...previous, optimisticUserMessage, optimisticAssistantMessage])
+
     try {
-      const response = await sendMessage(selectedConversationId, newMessage.trim())
-      setMessages((previous) => [...previous, response.user_message, response.assistant_message])
-      setNewMessage('')
+      await sendMessageStream(selectedConversationId, content, {
+        provider: selectedProvider,
+        onToken: (data) => {
+          const text = data?.text || ''
+          if (!text) {
+            return
+          }
+          setMessages((previous) =>
+            previous.map((message) =>
+              message.id === tempAssistantId
+                ? { ...message, content: `${message.content}${text}` }
+                : message,
+            ),
+          )
+        },
+        onDone: (data) => {
+          const streamedUser = data?.user_message
+          const streamedAssistant = data?.assistant_message
+          if (!streamedUser || !streamedAssistant) {
+            return
+          }
+          setMessages((previous) =>
+            previous.map((message) => {
+              if (message.id === tempUserId) {
+                return streamedUser
+              }
+              if (message.id === tempAssistantId) {
+                return streamedAssistant
+              }
+              return message
+            }),
+          )
+        },
+        onError: (data) => {
+          setError(data?.detail || 'Streaming failed')
+        },
+      })
       await refreshConversations()
     } catch (err) {
       setError(err.message)
+      setMessages((previous) =>
+        previous.filter((message) => message.id !== tempUserId && message.id !== tempAssistantId),
+      )
     } finally {
       setLoading(false)
     }
@@ -125,6 +184,15 @@ function App() {
           <form onSubmit={handleSendMessage} className="border-t border-slate-200 bg-white p-4">
             {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
             <div className="flex gap-2">
+              <select
+                value={selectedProvider}
+                onChange={(event) => setSelectedProvider(event.target.value)}
+                disabled={loading}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
               <input
                 type="text"
                 value={newMessage}
