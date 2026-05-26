@@ -13,6 +13,15 @@ async function request(path, options = {}) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.detail || 'Request failed')
   }
+  if (response.status === 204) {
+    return null
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    return null
+  }
+
   return response.json()
 }
 
@@ -29,6 +38,19 @@ export function listConversations() {
 
 export function listMessages(conversationId) {
   return request(`/conversations/${conversationId}/messages`)
+}
+
+export function renameConversation(conversationId, title) {
+  return request(`/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title: title || null }),
+  })
+}
+
+export function deleteConversation(conversationId) {
+  return request(`/conversations/${conversationId}`, {
+    method: 'DELETE',
+  })
 }
 
 export function sendMessage(conversationId, content, options = {}) {
@@ -69,6 +91,7 @@ export async function sendMessageStream(conversationId, content, options = {}) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let streamCompleted = false
 
   while (true) {
     const { done, value } = await reader.read()
@@ -89,11 +112,17 @@ export async function sendMessageStream(conversationId, content, options = {}) {
       if (event === 'token') {
         options.onToken?.(data)
       } else if (event === 'done') {
+        streamCompleted = true
         options.onDone?.(data)
       } else if (event === 'error') {
         options.onError?.(data)
+        throw new Error(data?.detail || 'Streaming failed')
       }
     }
+  }
+
+  if (!streamCompleted) {
+    throw new Error('Stream ended before completion')
   }
 }
 
