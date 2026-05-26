@@ -4,10 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str
-    OPENAI_API_KEY: str
-    OPENAI_MODEL: str
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4.1-mini"
     ANTHROPIC_API_KEY: str | None = None
-    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-latest"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-5-20250929"
     ANTHROPIC_MAX_TOKENS: int = Field(default=1024, ge=1, le=8192)
     RABBITMQ_URL: str
     RABBITMQ_INFERENCE_QUEUE: str = "inference_logs"
