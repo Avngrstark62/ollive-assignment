@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from config import settings
 from inference_wrapper import InferenceCallError, InferenceResult, run_inference_with_logging
@@ -8,17 +8,17 @@ from models import Message
 
 SYSTEM_PROMPT = "You are a concise and helpful assistant."
 
-_client: OpenAI | None = None
+_client: AsyncOpenAI | None = None
 
 
-def get_openai_client() -> OpenAI:
+def get_openai_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     return _client
 
 
-def generate_assistant_reply(
+async def generate_assistant_reply(
     messages: list[Message], *, conversation_id: UUID | None = None
 ) -> InferenceResult:
     if not settings.OPENAI_API_KEY:
@@ -31,15 +31,18 @@ def generate_assistant_reply(
         if message.role in {"user", "assistant"}
     )
 
+    async def invoke_provider():
+        return await get_openai_client().chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=chat_messages,
+        )
+
     try:
-        return run_inference_with_logging(
+        return await run_inference_with_logging(
             provider="openai",
             model=settings.OPENAI_MODEL,
             conversation_id=conversation_id,
-            invoke_provider=lambda: get_openai_client().chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=chat_messages,
-            ),
+            invoke_provider=invoke_provider,
         )
     except InferenceCallError as exc:
         raise ValueError(str(exc)) from exc

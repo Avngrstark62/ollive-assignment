@@ -48,7 +48,7 @@ def list_messages(conversation_id: UUID, db: Session = Depends(get_db)) -> list[
     response_model=MessagePairOut,
     status_code=status.HTTP_201_CREATED,
 )
-def send_message(
+async def send_message(
     conversation_id: UUID,
     payload: MessageCreate,
     db: Session = Depends(get_db),
@@ -77,7 +77,7 @@ def send_message(
     context_messages = list(reversed(db.scalars(context_stmt).all()))
 
     try:
-        inference_result = generate_assistant_reply(
+        inference_result = await generate_assistant_reply(
             context_messages,
             conversation_id=conversation_id,
         )
