@@ -37,3 +37,79 @@ export function sendMessage(conversationId, content) {
     body: JSON.stringify({ content }),
   })
 }
+
+export async function sendMessageStream(conversationId, content, handlers = {}) {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.detail || 'Request failed')
+  }
+
+  if (!response.body) {
+    throw new Error('Streaming is not supported by this browser.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split('\n\n')
+    buffer = events.pop() || ''
+
+    for (const rawEvent of events) {
+      const parsed = parseSseEvent(rawEvent)
+      if (!parsed) {
+        continue
+      }
+      const { event, data } = parsed
+      if (event === 'token') {
+        handlers.onToken?.(data)
+      } else if (event === 'done') {
+        handlers.onDone?.(data)
+      } else if (event === 'error') {
+        handlers.onError?.(data)
+      }
+    }
+  }
+}
+
+function parseSseEvent(rawEvent) {
+  const lines = rawEvent.split('\n')
+  let event = 'message'
+  let dataString = ''
+
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      dataString += line.slice(5).trim()
+    }
+  }
+
+  if (!dataString) {
+    return null
+  }
+
+  let data
+  try {
+    data = JSON.parse(dataString)
+  } catch {
+    data = { detail: dataString }
+  }
+
+  return { event, data }
+}

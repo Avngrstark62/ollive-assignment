@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createConversation, listConversations, listMessages, sendMessage } from './api'
+import { createConversation, listConversations, listMessages, sendMessageStream } from './api'
 
 function App() {
   const [conversations, setConversations] = useState([])
@@ -54,15 +54,72 @@ function App() {
       return
     }
 
+    const content = newMessage.trim()
+    const tempUserId = `temp-user-${Date.now()}`
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+    const optimisticUserMessage = {
+      id: tempUserId,
+      conversation_id: selectedConversationId,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+    }
+    const optimisticAssistantMessage = {
+      id: tempAssistantId,
+      conversation_id: selectedConversationId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    }
+
     setLoading(true)
     setError('')
+    setNewMessage('')
+    setMessages((previous) => [...previous, optimisticUserMessage, optimisticAssistantMessage])
+
     try {
-      const response = await sendMessage(selectedConversationId, newMessage.trim())
-      setMessages((previous) => [...previous, response.user_message, response.assistant_message])
-      setNewMessage('')
+      await sendMessageStream(selectedConversationId, content, {
+        onToken: (data) => {
+          const text = data?.text || ''
+          if (!text) {
+            return
+          }
+          setMessages((previous) =>
+            previous.map((message) =>
+              message.id === tempAssistantId
+                ? { ...message, content: `${message.content}${text}` }
+                : message,
+            ),
+          )
+        },
+        onDone: (data) => {
+          const streamedUser = data?.user_message
+          const streamedAssistant = data?.assistant_message
+          if (!streamedUser || !streamedAssistant) {
+            return
+          }
+          setMessages((previous) =>
+            previous.map((message) => {
+              if (message.id === tempUserId) {
+                return streamedUser
+              }
+              if (message.id === tempAssistantId) {
+                return streamedAssistant
+              }
+              return message
+            }),
+          )
+        },
+        onError: (data) => {
+          setError(data?.detail || 'Streaming failed')
+        },
+      })
       await refreshConversations()
     } catch (err) {
       setError(err.message)
+      setMessages((previous) =>
+        previous.filter((message) => message.id !== tempUserId && message.id !== tempAssistantId),
+      )
     } finally {
       setLoading(false)
     }

@@ -61,7 +61,7 @@ def _validate_and_structure_log(raw_log: dict[str, Any]) -> dict[str, Any]:
 
     provider = str(raw_log["provider"]).strip().lower()
     status = str(raw_log["status"]).strip().lower()
-    if status not in {"success", "error"}:
+    if status not in {"success", "error", "cancelled"}:
         status = "error"
 
     response = raw_log.get("response")
@@ -131,6 +131,8 @@ def _normalize_error_type(error: Any | None) -> str | None:
         return "rate_limit"
     if "timeout" in message:
         return "timeout"
+    if "cancelled" in message or "disconnect" in message:
+        return "cancelled"
     if "authentication" in message or "api key" in message or "401" in message:
         return "auth"
     if "invalid" in message or "400" in message:
