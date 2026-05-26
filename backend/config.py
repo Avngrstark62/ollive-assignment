@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OPENAI_API_KEY: str
     OPENAI_MODEL: str
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-latest"
+    ANTHROPIC_MAX_TOKENS: int = Field(default=1024, ge=1, le=8192)
     RABBITMQ_URL: str
     RABBITMQ_INFERENCE_QUEUE: str = "inference_logs"
     RABBITMQ_PREFETCH_COUNT: int = Field(default=10, ge=1, le=1000)

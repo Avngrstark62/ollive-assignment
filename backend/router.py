@@ -82,6 +82,8 @@ async def send_message(
         inference_result = await generate_assistant_reply(
             context_messages,
             conversation_id=conversation_id,
+            provider=payload.provider,
+            model=payload.model,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
@@ -138,6 +140,8 @@ async def stream_message(
             async for chunk in stream_assistant_reply(
                 context_messages,
                 conversation_id=conversation_id,
+                provider=payload.provider,
+                model=payload.model,
             ):
                 if await request.is_disconnected():
                     break

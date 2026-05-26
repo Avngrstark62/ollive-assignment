@@ -6,6 +6,7 @@ function App() {
   const [selectedConversationId, setSelectedConversationId] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState('openai')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -79,6 +80,7 @@ function App() {
 
     try {
       await sendMessageStream(selectedConversationId, content, {
+        provider: selectedProvider,
         onToken: (data) => {
           const text = data?.text || ''
           if (!text) {
@@ -182,6 +184,15 @@ function App() {
           <form onSubmit={handleSendMessage} className="border-t border-slate-200 bg-white p-4">
             {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
             <div className="flex gap-2">
+              <select
+                value={selectedProvider}
+                onChange={(event) => setSelectedProvider(event.target.value)}
+                disabled={loading}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
               <input
                 type="text"
                 value={newMessage}

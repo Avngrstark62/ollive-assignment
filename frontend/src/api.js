@@ -31,20 +31,30 @@ export function listMessages(conversationId) {
   return request(`/conversations/${conversationId}/messages`)
 }
 
-export function sendMessage(conversationId, content) {
+export function sendMessage(conversationId, content, options = {}) {
+  const payload = {
+    content,
+    ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.model ? { model: options.model } : {}),
+  }
   return request(`/conversations/${conversationId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(payload),
   })
 }
 
-export async function sendMessageStream(conversationId, content, handlers = {}) {
+export async function sendMessageStream(conversationId, content, options = {}) {
+  const payload = {
+    content,
+    ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.model ? { model: options.model } : {}),
+  }
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(payload),
   })
 
   if (!response.ok) {
@@ -77,11 +87,11 @@ export async function sendMessageStream(conversationId, content, handlers = {}) 
       }
       const { event, data } = parsed
       if (event === 'token') {
-        handlers.onToken?.(data)
+        options.onToken?.(data)
       } else if (event === 'done') {
-        handlers.onDone?.(data)
+        options.onDone?.(data)
       } else if (event === 'error') {
-        handlers.onError?.(data)
+        options.onError?.(data)
       }
     }
   }

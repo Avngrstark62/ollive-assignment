@@ -106,9 +106,9 @@ async def run_streaming_inference_with_logging(
         stream_response = await invoke_provider_stream()
         async for chunk in stream_response:
             if response_id is None:
-                response_id = getattr(chunk, "id", None)
+                response_id = _extract_stream_response_id(provider, chunk)
 
-            chunk_usage = _serialize_usage(getattr(chunk, "usage", None))
+            chunk_usage = _extract_stream_usage(provider, chunk)
             if chunk_usage is not None:
                 usage_payload = chunk_usage
 
@@ -195,16 +195,54 @@ def _serialize_usage(usage: Any | None) -> dict[str, Any] | None:
 
 def _extract_stream_output_text(provider: str, chunk: Any) -> str:
     if provider == "openai":
-        choices = getattr(chunk, "choices", None) or []
+        choices = _read_value(chunk, "choices") or []
         if not choices:
             return ""
-        delta = getattr(choices[0], "delta", None)
-        content = getattr(delta, "content", None)
+        first_choice = choices[0]
+        delta = _read_value(first_choice, "delta")
+        content = _read_value(delta, "content")
         return content or ""
 
     if provider == "anthropic":
-        delta = getattr(chunk, "delta", None)
-        text = getattr(delta, "text", None)
+        chunk_type = _read_value(chunk, "type")
+        if chunk_type != "content_block_delta":
+            return ""
+        delta = _read_value(chunk, "delta")
+        text = _read_value(delta, "text")
         return text or ""
 
     raise ValueError(f"Unsupported provider: {provider}")
+
+
+def _extract_stream_usage(provider: str, chunk: Any) -> dict[str, Any] | None:
+    if provider == "openai":
+        return _serialize_usage(_read_value(chunk, "usage"))
+
+    if provider == "anthropic":
+        chunk_type = _read_value(chunk, "type")
+        if chunk_type == "message_start":
+            message = _read_value(chunk, "message")
+            return _serialize_usage(_read_value(message, "usage"))
+        if chunk_type == "message_delta":
+            return _serialize_usage(_read_value(chunk, "usage"))
+    return None
+
+
+def _extract_stream_response_id(provider: str, chunk: Any) -> str | None:
+    if provider == "openai":
+        return _read_value(chunk, "id")
+    if provider == "anthropic":
+        chunk_type = _read_value(chunk, "type")
+        if chunk_type == "message_start":
+            message = _read_value(chunk, "message")
+            return _read_value(message, "id")
+        return _read_value(chunk, "id")
+    return None
+
+
+def _read_value(data: Any, key: str) -> Any:
+    if data is None:
+        return None
+    if isinstance(data, dict):
+        return data.get(key)
+    return getattr(data, key, None)
