@@ -61,6 +61,22 @@ def _validate_provider(provider: str) -> Literal["openai", "anthropic"]:
     return normalized_provider
 
 
+def _build_raw_prompt_payload(
+    provider: Literal["openai", "anthropic"],
+    chat_messages: list[dict[str, str]],
+) -> dict:
+    if provider == "openai":
+        return {
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *chat_messages],
+        }
+
+    return {
+        "system": SYSTEM_PROMPT,
+        "messages": chat_messages,
+        "max_tokens": settings.ANTHROPIC_MAX_TOKENS,
+    }
+
+
 async def generate_assistant_reply(
     messages: list[Message],
     *,
@@ -71,6 +87,7 @@ async def generate_assistant_reply(
     resolved_provider = _validate_provider(provider)
     resolved_model = _resolve_model(resolved_provider, model)
     chat_messages = _build_chat_messages(messages)
+    raw_prompt_payload = _build_raw_prompt_payload(resolved_provider, chat_messages)
 
     async def invoke_provider():
         if resolved_provider == "openai":
@@ -92,6 +109,7 @@ async def generate_assistant_reply(
         provider=resolved_provider,
         model=resolved_model,
         conversation_id=conversation_id,
+        raw_prompt=raw_prompt_payload,
         invoke_provider=invoke_provider,
     )
 
@@ -106,6 +124,7 @@ def stream_assistant_reply(
     resolved_provider = _validate_provider(provider)
     resolved_model = _resolve_model(resolved_provider, model)
     chat_messages = _build_chat_messages(messages)
+    raw_prompt_payload = _build_raw_prompt_payload(resolved_provider, chat_messages)
 
     async def invoke_provider_stream():
         if resolved_provider == "openai":
@@ -130,5 +149,6 @@ def stream_assistant_reply(
         provider=resolved_provider,
         model=resolved_model,
         conversation_id=conversation_id,
+        raw_prompt=raw_prompt_payload,
         invoke_provider_stream=invoke_provider_stream,
     )

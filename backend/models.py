@@ -59,6 +59,8 @@ class LLMInferenceLog(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     conversation_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="SET NULL"),

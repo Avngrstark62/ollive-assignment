@@ -20,6 +20,8 @@ def ingest_inference_log(log: dict[str, Any]) -> None:
         input_tokens=validated_log["input_tokens"],
         output_tokens=validated_log["output_tokens"],
         total_tokens=validated_log["total_tokens"],
+        input_preview=validated_log["input_preview"],
+        output_preview=validated_log["output_preview"],
         conversation_id=validated_log["conversation_id"],
         error_type=validated_log["error_type"],
         metadata_json=validated_log["metadata"],
@@ -82,6 +84,8 @@ def _validate_and_structure_log(raw_log: dict[str, Any]) -> dict[str, Any]:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
+        "input_preview": _normalize_preview(raw_log.get("input_preview")),
+        "output_preview": _normalize_preview(raw_log.get("output_preview")),
         "conversation_id": _parse_uuid(raw_log.get("conversation_id")),
         "error_type": error_type,
         "metadata": metadata,
@@ -164,3 +168,10 @@ def _read_usage(response: Any) -> Any | None:
     if isinstance(response, dict):
         return response.get("usage")
     return getattr(response, "usage", None)
+
+
+def _normalize_preview(value: Any | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None

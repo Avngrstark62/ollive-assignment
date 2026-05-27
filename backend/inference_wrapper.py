@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
@@ -22,17 +24,22 @@ class InferenceCallError(Exception):
         super().__init__(message)
 
 
+PREVIEW_MAX_CHARS = 500
+
+
 async def run_inference_with_logging(
     *,
     provider: str,
     model: str,
     conversation_id: UUID | str | None,
+    raw_prompt: Any | None,
     invoke_provider: Callable[[], Awaitable[Any]],
 ) -> InferenceResult:
     request_started_at = _utcnow()
     start_time = perf_counter()
     log_id = str(uuid4())
     conversation_id_value = str(conversation_id) if conversation_id is not None else None
+    input_preview = _build_input_preview(raw_prompt)
     response: Any | None = None
 
     try:
@@ -55,6 +62,8 @@ async def run_inference_with_logging(
                     "latency_ms": latency_ms,
                     "status": "success",
                     "conversation_id": conversation_id_value,
+                    "input_preview": input_preview,
+                    "output_preview": _to_preview(output_text),
                     "response": _serialize_response(response),
                     "error": None,
                 },
@@ -76,6 +85,8 @@ async def run_inference_with_logging(
                     "latency_ms": latency_ms,
                     "status": "error",
                     "conversation_id": conversation_id_value,
+                    "input_preview": input_preview,
+                    "output_preview": _extract_output_preview_for_failure(provider, response),
                     "response": _serialize_response(response),
                     "error": str(exc),
                 },
@@ -89,16 +100,20 @@ async def run_streaming_inference_with_logging(
     provider: str,
     model: str,
     conversation_id: UUID | str | None,
+    raw_prompt: Any | None,
     invoke_provider_stream: Callable[[], Awaitable[Any]],
 ) -> AsyncIterator[str]:
     request_started_at = _utcnow()
     start_time = perf_counter()
     log_id = str(uuid4())
     conversation_id_value = str(conversation_id) if conversation_id is not None else None
+    input_preview = _build_input_preview(raw_prompt)
 
     stream_response: Any | None = None
     response_id: str | None = None
     usage_payload: dict[str, Any] | None = None
+    output_text_parts: list[str] = []
+    collected_output_chars = 0
     status = "success"
     error_message: str | None = None
 
@@ -114,6 +129,10 @@ async def run_streaming_inference_with_logging(
 
             text = _extract_stream_output_text(provider, chunk)
             if text:
+                if collected_output_chars < PREVIEW_MAX_CHARS:
+                    remaining_chars = PREVIEW_MAX_CHARS - collected_output_chars
+                    output_text_parts.append(text[:remaining_chars])
+                    collected_output_chars += len(output_text_parts[-1])
                 yield text
     except asyncio.CancelledError:
         status = "cancelled"
@@ -142,6 +161,8 @@ async def run_streaming_inference_with_logging(
                     "latency_ms": latency_ms,
                     "status": status,
                     "conversation_id": conversation_id_value,
+                    "input_preview": input_preview,
+                    "output_preview": _to_preview("".join(output_text_parts)),
                     "response": response_payload,
                     "error": error_message,
                 },
@@ -246,3 +267,86 @@ def _read_value(data: Any, key: str) -> Any:
     if isinstance(data, dict):
         return data.get(key)
     return getattr(data, key, None)
+
+
+def _extract_output_preview_for_failure(provider: str, response: Any | None) -> str | None:
+    if response is None:
+        return None
+    try:
+        return _to_preview(_extract_output_text(provider, response))
+    except Exception:
+        return None
+
+
+def _build_input_preview(raw_prompt: Any | None) -> str | None:
+    if raw_prompt is None:
+        return None
+
+    if isinstance(raw_prompt, str):
+        return _to_preview(raw_prompt)
+
+    serialized_prompt = _serialize_prompt(raw_prompt)
+    if not serialized_prompt:
+        return None
+
+    prompt_text = _extract_prompt_text(serialized_prompt)
+    if prompt_text:
+        return _to_preview(prompt_text)
+    return _to_preview(json.dumps(serialized_prompt, ensure_ascii=True))
+
+
+def _serialize_prompt(raw_prompt: Any) -> dict[str, Any] | None:
+    if isinstance(raw_prompt, dict):
+        return raw_prompt
+    model_dump = getattr(raw_prompt, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(exclude_none=True)
+    return None
+
+
+def _extract_prompt_text(prompt_payload: dict[str, Any]) -> str:
+    sections: list[str] = []
+    system_value = prompt_payload.get("system")
+    system_text = _normalize_content_value(system_value)
+    if system_text:
+        sections.append(f"system: {system_text}")
+
+    messages = prompt_payload.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            role = _read_value(message, "role") or "unknown"
+            content_value = _read_value(message, "content")
+            content_text = _normalize_content_value(content_value)
+            if content_text:
+                sections.append(f"{role}: {content_text}")
+
+    return "\n".join(sections)
+
+
+def _normalize_content_value(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            item_text = _read_value(item, "text")
+            if isinstance(item_text, str):
+                parts.append(item_text)
+        return "\n".join(parts)
+
+    return str(content) if content is not None else ""
+
+
+def _to_preview(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = re.sub(r"\s+", " ", value).strip()
+    if not normalized:
+        return None
+    if len(normalized) <= PREVIEW_MAX_CHARS:
+        return normalized
+    return f"{normalized[: PREVIEW_MAX_CHARS - 3]}..."
